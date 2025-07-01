@@ -231,9 +231,11 @@ bool ControllerManager::loadController(const std::string& name)
   ROS_DEBUG("Will load controller '%s'", name.c_str());
 
   // lock controllers
+  // 1. 给controller双缓冲区加锁
   std::lock_guard<std::recursive_mutex> guard(controllers_lock_);
 
   // get reference to controller list
+  // 2. 获取当前双缓冲区的空闲区
   int free_controllers_list = (current_controllers_list_ + 1) % 2;
   while (ros::ok() && free_controllers_list == used_by_realtime_)
   {
@@ -243,6 +245,8 @@ bool ControllerManager::loadController(const std::string& name)
     }
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
+
+  // 3. 把当前使用的controller缓冲区拷贝到空闲区
   std::vector<ControllerSpec>
     &from = controllers_lists_[current_controllers_list_],
     &to = controllers_lists_[free_controllers_list];
@@ -263,9 +267,14 @@ bool ControllerManager::loadController(const std::string& name)
     }
   }
 
+
+  // 4. 创建controller
   ros::NodeHandle c_nh;
   // Constructs the controller
   try{
+    // 创建一个新的NodeHandle，其命名空间为 root_nh_ 的子命名空间 name
+    // 例如：如果 root_nh_ 的命名空间是 "/robot"，name 是 "arm_controller"
+    // 那么 c_nh 的命名空间就是 "/robot/arm_controller"
     c_nh = ros::NodeHandle(root_nh_, name);
   }
   catch(std::exception &e) {
@@ -276,6 +285,8 @@ bool ControllerManager::loadController(const std::string& name)
     ROS_ERROR("Exception thrown while constructing nodehandle for controller with name '%s'", name.c_str());
     return false;
   }
+
+  // 4.1 从参数服务器获取controller_node_handle 的类型，若在controller_loaders列表中存在，则直接覆盖
   controller_interface::ControllerBaseSharedPtr c;
   std::string type;
   if (c_nh.getParam("type", type))
@@ -289,7 +300,7 @@ bool ControllerManager::loadController(const std::string& name)
       {
         for (const auto& cur_type : (*it)->getDeclaredClasses()){
           if (type == cur_type){
-            c = (*it)->createInstance(type);
+            c = (*it)->createInstance(type);  // 使用智能指针管理新对象（单例）
           }
         }
         ++it;
@@ -308,6 +319,7 @@ bool ControllerManager::loadController(const std::string& name)
   }
 
   // checks if controller was constructed
+  // 5. 检查controller是否已经创建
   if (!c)
   {
     ROS_ERROR("Could not load controller '%s' because controller type '%s' does not exist.",  name.c_str(), type.c_str());
@@ -317,6 +329,7 @@ bool ControllerManager::loadController(const std::string& name)
   }
 
   // Initializes the controller
+  // 6. 初始化 controller
   ROS_DEBUG("Initializing controller '%s'", name.c_str());
   bool initialized;
   controller_interface::ControllerBase::ClaimedResources claimed_resources; // Gets populated during initRequest call
@@ -340,6 +353,7 @@ bool ControllerManager::loadController(const std::string& name)
   ROS_DEBUG("Initialized controller '%s' successful", name.c_str());
 
   // Adds the controller to the new list
+  // 7. 添加controller到新缓冲区里
   to.resize(to.size() + 1);
   to.back().info.type = type;
   to.back().info.name = name;
@@ -347,6 +361,7 @@ bool ControllerManager::loadController(const std::string& name)
   to.back().c = c;
 
   // Destroys the old controllers list when the realtime thread is finished with it.
+  // 8. 修改下标，清空旧缓冲区
   int former_current_controllers_list_ = current_controllers_list_;
   current_controllers_list_ = free_controllers_list;
   while (ros::ok() && used_by_realtime_ == former_current_controllers_list_)
@@ -456,10 +471,13 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
     ROS_DEBUG(" - stopping controller '%s'", controller.c_str());
 
   // lock controllers
+  // 1. 加锁，递归互斥锁
   std::lock_guard<std::recursive_mutex> guard(controllers_lock_);
 
   controller_interface::ControllerBase* ct;
   // list all controllers to stop
+
+  // 2. 枚举需要停止的controller
   for (const auto& controller : stop_controllers)
   {
     ct = getControllerByName(controller);
@@ -484,9 +502,10 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
   ROS_DEBUG("Stop request vector has size %i", (int)stop_request_.size());
 
   // list all controllers to start
+  // 3. 枚举需要打开的controller
   for (const auto& controller : start_controllers)
   {
-    ct = getControllerByName(controller);
+    ct = getControllerByName(controller);  // 获取具体的controller对象
     if (ct == nullptr){
       if (strictness ==  controller_manager_msgs::SwitchController::Request::STRICT){
         ROS_ERROR("Could not start controller with name '%s' because no controller with this name exists",
@@ -509,13 +528,16 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
   ROS_DEBUG("Start request vector has size %i", (int)start_request_.size());
 
   // Do the resource management checking
+  // 4. info list 存放 controller信息，用于资源检查
   std::list<hardware_interface::ControllerInfo> info_list;
   switch_start_list_.clear();
   switch_stop_list_.clear();
 
+  // 5. 根据切换类型，检查当前的controller_list，进行状态切换
   const auto &controllers = controllers_lists_[current_controllers_list_];
   for (const auto& controller : controllers)
   {
+    // 5.1 检查需要start/stop的controller，是否在当前controller list里
     bool in_stop_list  = false;
     for (const auto& request : stop_request_)
     {
@@ -539,6 +561,7 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
     const bool is_running = controller.c->isRunning();
     const hardware_interface::ControllerInfo &info = controller.info;
 
+    // 5.2 进行一系列检查：1. 防止重复stop；2. 防止重复start；3. 防止同时start和stop
     if(!is_running && in_stop_list){ // check for double stop
       if(strictness ==  controller_manager_msgs::SwitchController::Request::STRICT){
         ROS_ERROR_STREAM("Could not stop controller '" << info.name << "' since it is not running");
@@ -568,13 +591,15 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
         return false;
     }
 
+    // 5.3 正在运行的，则添加到 switch_stop_list 中，未运行，则添加到 swtich_start_list 中
     if(is_running && in_stop_list && !in_start_list){ // running and real stop
       switch_stop_list_.push_back(info);
     }
     else if(!is_running && !in_stop_list && in_start_list){ // start, but no restart
       switch_start_list_.push_back(info);
      }
-
+    
+    // 5.4 检查是否要添加到info_list 中
     bool add_to_list = is_running;
     if (in_stop_list)
       add_to_list = false;
@@ -585,6 +610,7 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
       info_list.push_back(info);
   }
 
+  // 6. 资源检查
   bool in_conflict = robot_hw_->checkForConflict(info_list);
   if (in_conflict)
   {

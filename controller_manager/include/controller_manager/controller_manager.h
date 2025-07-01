@@ -50,7 +50,7 @@
 #include <controller_manager_msgs/SwitchController.h>
 #include <controller_manager/controller_loader_interface.h>
 
-
+// 写的很清晰了，头文件直接阅读即可
 namespace controller_manager{
 
 /** \brief ROS Controller Manager and Runner
@@ -60,7 +60,6 @@ namespace controller_manager{
  * running controllers in \ref update.
  *
  */
-
 class ControllerManager{
 
 public:
@@ -209,6 +208,15 @@ private:
    * real-time thread when switching controllers in the non-real-time thread.
    *\{*/
   /// Mutex protecting the current controllers list
+  // 递归互斥锁：允许同一个线程多次获取锁，避免死锁
+  // 与普通mutex的区别：
+  // 1. 普通mutex：同一线程重复lock会导致死锁
+  // 2. recursive_mutex：同一线程可以多次lock，需要对应次数的unlock
+  // 其他常用mutex：
+  // - std::mutex：基本互斥锁
+  // - std::timed_mutex：带超时的互斥锁
+  // - std::shared_mutex：读写锁（C++17）
+  // - std::shared_timed_mutex：带超时的读写锁
   std::recursive_mutex controllers_lock_;
   /// Double-buffered controllers list
   std::vector<ControllerSpec> controllers_lists_[2];
