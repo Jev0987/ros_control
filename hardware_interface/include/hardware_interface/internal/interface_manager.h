@@ -111,7 +111,7 @@ struct CheckIsResourceManager {
 } // namespace internal
 
 /**
- * \brief Manager for hardware interface registrations.
+ * \brief Manager for hardware interface registrations. 接口管理器核心类，负责管理所有硬件接口注册、存储和访问
  *
  * This class enables the registration of interfaces based on their class type,
  * handling all the required demangling and storage. The registration ensures
@@ -212,6 +212,7 @@ public:
 
     // if we're here, we have multiple interfaces, and thus we must construct a new
     // combined interface, or return one already constructed
+    // 同一个类型，多个接口，且是 ResourceManager，自动合并：
     T* iface_combo;
     InterfaceMap::iterator it_combo = interfaces_combo_.find(type_name);
     if(it_combo != interfaces_combo_.end() &&

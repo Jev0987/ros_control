@@ -620,6 +620,7 @@ bool ControllerManager::switchController(const std::vector<std::string>& start_c
     return false;
   }
 
+  // 7. 检查start list 和 stop list的名称和资源（细节看函数内，例如 my_robot_hw_2.cpp
   if (!robot_hw_->prepareSwitch(switch_start_list_, switch_stop_list_))
   {
     ROS_ERROR("Could not switch controllers. The hardware interface combination for the requested controllers is unfeasible.");

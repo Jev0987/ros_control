@@ -40,7 +40,7 @@
 
 namespace hardware_interface{
 
-/** \brief Abstract Hardware Interface
+/** \brief Abstract Hardware Interface 所有硬件接口的基类
  *
  */
 class HardwareInterface

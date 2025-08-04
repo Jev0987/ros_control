@@ -43,7 +43,7 @@ namespace internal
 {
 
 /**
- * \brief Demangle symbol, if symbol demangling is available.
+ * \brief Demangle symbol, if symbol demangling is available. C++ 符号反混淆功能 —— 主要用于调试和日志记录时，显示更容易读的类型名称
  * \param name Symbol to demangle.
  * \return Demangled symbol if demangling is available and successful, mangled symbol otherwise.
  */

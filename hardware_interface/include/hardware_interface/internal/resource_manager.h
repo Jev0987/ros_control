@@ -48,6 +48,7 @@ namespace hardware_interface
  * \brief Non-templated Base Class that contains a virtual destructor.
  *
  * This will allow to destroy the templated children without having to know the template type.
+ * 基类，提供虚析构函数，支持多态销毁【这个操作有点牛掰，能够允许不了解具体模板类型的情况下，销毁资源管理器】
  */
 class ResourceManagerBase
 {
@@ -56,10 +57,10 @@ public:
 };
 
 /**
- * \brief Class for handling named resources.
+ * \brief Class for handling named resources.  资源管理器类 —— 管理命名资源
  *
  * Resources are encapsulated inside handle instances, and this class allows to register and get them by name.
- *
+ * 
  * \tparam ResourceHandle Resource handle type. Must implement the following method:
  *  \code
  *   std::string getName() const;
@@ -86,12 +87,17 @@ public:
   }
 
   /**
-   * \brief Register a new resource.
+   * \brief Register a new resource.  注册新的资源句柄
    * If the resource name already exists, the previously stored resource value will be replaced with \e val.
    * \param handle Resource value. Its type should implement a <tt>std::string getName()</tt> method.
    */
   void registerHandle(const ResourceHandle& handle)
   {
+    // typename 的作用是告诉编译器 ResourceMap::iterator 是一个类型名称，而不是一个静态成员变量
+    // 因为 ResourceMap 是一个依赖模板参数的类型
+    // 由于 ResourceHandle 是模板参数，编译器在解析 ResourceMap::iterator 时无法确定：
+    // - iterator 是一个类型名称
+    // - 还是 ResourceMap 类的一个静态成员变量
     typename ResourceMap::iterator it = resource_map_.find(handle.getName());
     if (it == resource_map_.end())
     {
@@ -106,7 +112,7 @@ public:
   }
 
   /**
-   * \brief Get a resource handle by name.
+   * \brief Get a resource handle by name.  通过名称获取资源句柄
    * \param name Resource name.
    * \return Resource associated to \e name. If the resource name is not found, an exception is thrown.
    */
@@ -124,7 +130,7 @@ public:
   }
 
   /**
-   * \brief Combine a list of interfaces into one.
+   * \brief Combine a list of interfaces into one. 多个资源管理器合并成一个
    *
    * Every registered handle in each of the managers is registered into the result interface
    * \param managers The list of resource managers to be combined.
